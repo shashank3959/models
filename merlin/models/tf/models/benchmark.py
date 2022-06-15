@@ -19,7 +19,6 @@ from typing import Dict, List, Optional, Union
 from merlin.models.tf.blocks.core.aggregation import ElementWiseMultiply
 from merlin.models.tf.blocks.core.base import Block
 from merlin.models.tf.blocks.core.combinators import ParallelBlock
-from merlin.models.tf.blocks.core.transformations import AsSparseFeatures
 from merlin.models.tf.blocks.mlp import MLPBlock
 from merlin.models.tf.blocks.retrieval.matrix_factorization import (
     MatrixFactorizationBlock,
@@ -209,7 +208,9 @@ def WideAndDeepModel(
         if not wide_input_block:
             wide_input_block = InputBlock(
                 wide_schema,
-                post=AsSparseFeatures(),
+                add_sparse_branch=True,
+                add_embedding_branch=False,
+                add_continuous_branch=False,
                 **kwargs,
             )
         wide_body = wide_input_block.connect(

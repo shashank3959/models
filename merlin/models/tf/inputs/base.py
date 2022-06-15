@@ -21,7 +21,7 @@ from merlin.models.tf.blocks.core.aggregation import SequenceAggregation, Sequen
 from merlin.models.tf.blocks.core.base import Block, BlockType
 from merlin.models.tf.blocks.core.combinators import ParallelBlock, TabularAggregationType
 from merlin.models.tf.blocks.core.masking import MaskingBlock, masking_registry
-from merlin.models.tf.blocks.core.transformations import AsDenseFeatures
+from merlin.models.tf.blocks.core.transformations import AsDenseFeatures, AsSparseFeatures
 from merlin.models.tf.inputs.continuous import ContinuousFeatures
 from merlin.models.tf.inputs.embedding import (
     ContinuousEmbedding,
@@ -51,6 +51,7 @@ def InputBlock(
     split_sparse: bool = False,
     masking: Optional[Union[str, MaskingBlock]] = None,
     seq_aggregator: Block = SequenceAggregator(SequenceAggregation.MEAN),
+    add_sparse_branch: bool = False,
     **kwargs,
 ) -> Block:
     """The entry block of the model to process input features from a schema.
@@ -117,6 +118,10 @@ def InputBlock(
         If non-sequential model (seq=False):
         aggregate the sparse features tensor along the sequence axis.
         Defaults to SequenceAggregator('mean')
+    add_sparse_branck: Optional[bool]
+        If True, all categorical features would be transformed to sparse features as additional
+        input branch.
+        Default to False
     """
     branches = branches or {}
 
@@ -200,6 +205,10 @@ def InputBlock(
 
         branches["categorical"] = emb_cls.from_schema(  # type: ignore
             schema, tags=categorical_tags, embedding_options=embedding_options, **emb_kwargs
+        )
+    if add_sparse_branch and schema:
+        branches["sparse"] = ContinuousFeatures.from_schema(
+            schema, tags=categorical_tags, pre=AsSparseFeatures()
         )
 
     if continuous_projection:
