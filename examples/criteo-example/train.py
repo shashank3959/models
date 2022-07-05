@@ -18,61 +18,71 @@ import keras
 from time import time
 
 
-VERBOSE=False # print extra information about model structure
+VERBOSE = False  # print extra information about model structure
 
 
 def get_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--data_dir', type=str, default='/mm-benchmark-criteo/criteo-preprocessed-data')
-    parser.add_argument('--embedding_dim', type=int, default=32)
-    parser.add_argument('--part_mem_fraction', type=float, default=0.08)
+    parser.add_argument(
+        "--data_dir", type=str, default="/mm-benchmark-criteo/criteo-preprocessed-data"
+    )
+    parser.add_argument("--embedding_dim", type=int, default=32)
+    parser.add_argument("--part_mem_fraction", type=float, default=0.08)
 
     # Training time args
-    parser.add_argument('--epochs', type=int, default=1)
-    parser.add_argument('--warmup_epochs', type=int, default=0)
-    parser.add_argument('--batch_size', type=int, default=32768)
-    parser.add_argument('--use_sgd', action='store_true', help='Use SGD optimizer instead of Ftrl/Adagrad')
-    parser.add_argument('--lr', type=float, default=0.08)
-    parser.add_argument('--no_gpu', action='store_true', help='Use CPU only', default=False)
-    parser.add_argument('--model_save_dir', type=str, default='/mm-benchmark-criteo/model_save')
-    parser.add_argument('--model_save_prefix', type=str, default='model-1')
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--warmup_epochs", type=int, default=0)
+    parser.add_argument("--batch_size", type=int, default=32768)
+    parser.add_argument(
+        "--use_sgd", action="store_true", help="Use SGD optimizer instead of Ftrl/Adagrad"
+    )
+    parser.add_argument("--lr", type=float, default=0.08)
+    # parser.add_argument('--no_gpu', action='store_true', help='Use CPU only')
+    parser.add_argument("--model_save_dir", type=str, default="/mm-benchmark-criteo/model_save")
+    parser.add_argument("--model_save_prefix", type=str, default="model-1")
 
     # Logging
-    parser.add_argument('--log_tensorboard', action='store_true', help='Log Tensorboard')
-    parser.add_argument('--tensorboard_log_dir', type=str, default='/mm-benchmark-criteo/benchmark-logs')
-    parser.add_argument('-v', '--verbose', action='store_true', default=True)
+    parser.add_argument("--log_tensorboard", action="store_true", help="Log Tensorboard")
+    parser.add_argument(
+        "--tensorboard_log_dir",
+        type=str,
+        default="/mm-benchmark-criteo/tensorboard_logs/run-a100-40g",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", default=True)
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = get_args()
 
     if args.verbose:
-        VERBOSE=True
-        print("="*20)
+        VERBOSE = True
+        print("=" * 10, "ARGUMENTS ==", "=" * 10)
         print(args)
-
+        print("=" * 20)
 
     train = merlin.io.Dataset(
-        os.path.join(args.data_dir, "train"), engine="parquet", part_mem_fraction=args.part_mem_fraction
+        os.path.join(args.data_dir, "train"),
+        engine="parquet",
+        part_mem_fraction=args.part_mem_fraction,
     )
     valid = merlin.io.Dataset(
-        os.path.join(args.data_dir, "valid"), engine="parquet", part_mem_fraction=args.part_mem_fraction
+        os.path.join(args.data_dir, "valid"),
+        engine="parquet",
+        part_mem_fraction=args.part_mem_fraction,
     )
-
 
     # MODEL DEFINITION
     model = mm.DLRMModel(
-        train.schema,                                                            # 1
+        train.schema,  # 1
         embedding_dim=args.embedding_dim,
-        bottom_block=mm.MLPBlock([256, args.embedding_dim]),                         # 2
+        bottom_block=mm.MLPBlock([256, args.embedding_dim]),  # 2
         top_block=mm.MLPBlock([256, 128, 64]),
-        prediction_tasks=mm.BinaryClassificationTask(                            # 3
+        prediction_tasks=mm.BinaryClassificationTask(  # 3
             train.schema.select_by_tag(Tags.TARGET).column_names[0]
-        )               
+        ),
     )
-
 
     if args.use_sgd:
         optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr)
@@ -87,16 +97,24 @@ if __name__ == '__main__':
         model.fit(train, batch_size=args.batch_size)
 
     # Train
-    train_start = time()
-    model.fit(train, batch_size=args.batch_size)
-    print("=== TOTAL TRAINING TIME === :", time() - train_start)
+    # Set Tensorboard Callback
+    if args.log_tensorboard:
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(
+            log_dir=args.tensorboard_log_dir, histogram_freq=1
+        )
+        train_start = time()
+        model.fit(train, batch_size=args.batch_size, epochs=args.epochs, callbacks=[tensorboard_callback])
+    else:
+        train_start = time()
+        model.fit(train, epochs=args.epochs, batch_size=args.batch_size)
 
+    print("=== TOTAL TRAINING TIME === :", time() - train_start)
 
     # Validation
     valid_start = time()
     metrics = model.evaluate(valid, batch_size=args.batch_size, return_dict=True)
     print("=== TOTAL VALIDATION TIME === :", time() - valid_start)
-    
+
     if VERBOSE:
         print(model.summary())
 
